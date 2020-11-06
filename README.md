@@ -1,3 +1,3 @@
 # Rive
 
-Rive is a Ruby RISC V (Five) instruction set simulator. 
+Rive is a RISC V (Five) instruction set simulator, written in Ruby 
