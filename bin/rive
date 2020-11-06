@@ -1,0 +1,4 @@
+#!/usr/bin/env ruby
+
+require_relative '../lib/rive'
+Rive::Runner.run(*ARGV)
