@@ -23,7 +23,7 @@ module Rive
       @memory=Memory.new(@mem_size)
       @reg=(0..31).map{|i| [i,0]}.to_h
       @sp=@reg[2]=@mem_size
-      @log=File.open("exec.log",'w')
+      @log=File.open("ruby.log",'w')
       @pc=options[:start_address] || 0x0
       @nb_instr=0
     end
@@ -73,14 +73,19 @@ module Rive
     end
 
     def decode_execute instruction
-      #puts instruction.to_s(16).rjust(8,'0') if @options[:verbose]
       opcode=instruction & 0b1111111 # 7 bits LSB
       format=ISA::OPCODE_FORMAT_H[opcode]
+
+      unless format
+        raise "unknown format for opcode 0b#{opcode.to_s(2)}"
+      end
+
       field={}
       ISA::FORMAT_ENCODING_H[format].each do |field_name,field_range|
         field[field_name]=bitfield(instruction,field_range)
       end
-      puts @disassembler.disassemble(field) if @options[:verbose]
+      # step
+      # puts opcode
       case opcode=field[:opcode]
       when OPCODE_LUI #lui
         imm =field[:imm_31_12] << 12
@@ -110,7 +115,6 @@ module Rive
         rd   = field[:rd]
         text = [:jalr,rd,rs1,imm]
         imm=(imm-2**12) if imm[11]==1
-        puts "imm=#{imm}"
         @reg[rd]=@pc+4 #in bytes
         puts "reg#{rs1}=#{@reg[rs1]}"
         @pc=@reg[rs1]+imm
@@ -215,11 +219,11 @@ module Rive
         when 0b000
           text = [:sb,rs1,rs2,imm]
           addr=@reg[rs1]+imm
-          @memory.write_32_bits addr,@reg[rs2] & 0xF #u8
+          @memory.write_32_bits addr,@reg[rs2] & 0xFF #u8
         when 0b001
           text = [:sh,rs1,rs2,imm]
           addr=@reg[rs1]+imm
-          @memory.write_32_bits addr,@reg[rs2] & 0xFF #u16
+          @memory.write_32_bits addr,@reg[rs2] & 0xFFFF #u16
         when 0b010
           text = [:sw,rs1,rs2,imm]
           addr=@reg[rs1]+imm
@@ -257,12 +261,11 @@ module Rive
           @reg[rd]=ux(@reg[rs1]) & ux(imm)
         when 0b001
           text = [:slli,rd,rs1,imm]
-          puts imm
-          @reg[rd]=ux(@reg[rs1]) << imm #signed imm ????
+          @reg[rd]=ux(@reg[rs1]) << ux(imm) #signed imm ????
         when 0b101
           #srli,srai
           imm=field[:shamt]
-          imm-=2**5 if imm[4]==1
+          #imm-=2**5 if imm[4]==1
           case imm_11_5=field[:imm_11_5]
           when 0b0000000
             text = [:srli,rd,rs1,imm]
@@ -290,6 +293,9 @@ module Rive
           when 0b0100000
             text = [:sub,rd,rs1,rs2]
             @reg[rd]=(sx(@reg[rs1]) - sx(@reg[rs2])) & 0xFFFFFFFF
+          when 0b0000001
+            text = [:mul,rd,rs1,rs2]
+            @reg[rd]=(sx(@reg[rs1]) * sx(@reg[rs2])) & 0xFFFFFFFF
           else
             raise "unknown case for opcode=0b0110011 with func3=0b000"
           end
@@ -303,8 +309,15 @@ module Rive
           text = [:sltu,rd,rs1,rs2]
           @reg[rd]=(ux(@reg[rs1]) < ux(@reg[rs2])) ? 1 : 0
         when 0b100
-          text = [:xor,rd,rs1,rs2]
-          @reg[rd]=ux(@reg[rs1]) ^ ux(@reg[rs2])
+          case imm_11_5=field[:funct7]
+          when 0b0000000
+            text = [:xor,rd,rs1,rs2]
+            @reg[rd]=ux(@reg[rs1]) ^ ux(@reg[rs2])
+          when 0b0000001
+            @reg[rd]=sx(@reg[rs1]) / sx(@reg[rs2])
+          else
+            raise "unknown case"
+          end
         when 0b101
           #srl,sra
           case imm_11_5=(field[:imm_11_0] & 0b1111111) # 7 bits
@@ -314,15 +327,34 @@ module Rive
           when 0b0100000
             text = [:sra,rd,rs1,rs2]
             @reg[rd]=sx(@reg[rs1]) >> (@reg[rs2] & 0b111111)
+          when 0b0000001
+            text = [:divu,rd,rs1,rs2]
+            @reg[rd]=ux(@reg[rs1]) / ux(@reg[rs2])
           else
             raise "unknown case for i_type with func3=0b101"
           end
         when 0b110
-          text = [:or,rd,rs1,rs2]
-          @reg[rd]=ux(@reg[rs1]) | ux(@reg[rs2])
+          case imm_11_5=field[:funct7]
+          when 0b0000000
+            text = [:or,rd,rs1,rs2]
+            @reg[rd]=ux(@reg[rs1]) | ux(@reg[rs2])
+          when 0b0000001
+            text = [:rem,rd,rs1,rs2]
+            @reg[rd]=@reg[rs1] % @reg[rs2] #???
+          else
+            raise "unknown case"
+          end
         when 0b111
-          text = [:and,rd,rs1,rs2]
-          @reg[rd]=ux(@reg[rs1]) & ux(@reg[rs2])
+          case imm_11_5=field[:funct7]
+          when 0b0000000
+            text = [:and,rd,rs1,rs2]
+            @reg[rd]=ux(@reg[rs1]) & ux(@reg[rs2])
+          when 0b0000001
+            text = [:remu,rd,rs1,rs2]
+            @reg[rd]=ux(@reg[rs1]) % ux(@reg[rs2]) #???
+          else
+            raise "unknown case"
+          end
         else
           raise "unknown funct3=0b#{funct3.to_s(2)} for opcode=0b0100011"
         end

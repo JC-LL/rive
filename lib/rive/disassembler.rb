@@ -153,7 +153,7 @@ module Rive
           #raise "unknown funct3 '0b#{funct3.to_s(2)}'"
           text << "??"
         end
-      when 0b0110011 #r_type
+      when OPCODE_INT_REG #r_type
         rs1=fields_h[:rs1]
         rs2=fields_h[:rs2]
         rd =fields_h[:rd]

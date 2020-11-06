@@ -37,7 +37,7 @@ module Rive
 
     def read_32_bits addr
       puts "read at 0x%08x" % addr
-      pp bytes=read_bytes(addr,4)
+      bytes=read_bytes(addr,4)
       data=0
       data+=bytes.shift
       data+=bytes.shift << 8  #indianness
