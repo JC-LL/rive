@@ -11,6 +11,10 @@ module Rive
     OPCODE_INT_IMM = 0b0010011
     OPCODE_INT_REG = 0b0110011
     OPCODE_INT_MUL = 0b0110011
+    OPCODE_E_CSR   = 0b1110011
+    #==========================
+    FUNCT3_DIV     = 0b100
+    FUNCT3_DIVU    = 0b101 
 
     FORMAT_ENCODING_H={
       #========= base instruction formats =========

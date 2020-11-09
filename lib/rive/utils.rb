@@ -26,7 +26,7 @@ module Rive
     end
 
     def showregs reg=nil
-      @reg.each do |id,value|
+      @reg.each_with_index do |value,id|
         if reg
           if reg==id
             puts "x#{id}".rjust(3)+":#{value.to_s(16).rjust(8,'0')}"

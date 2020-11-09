@@ -21,11 +21,14 @@ module Rive
       puts "=> configuring processor"
       @mem_size=options[:mem_size] || 2**20
       @memory=Memory.new(@mem_size)
-      @reg=(0..31).map{|i| [i,0]}.to_h
+      #@reg=(0..31).map{|i| [i,0]}.to_h
+      @reg=Array.new(32){0}
+      pp @reg
       @sp=@reg[2]=@mem_size
       @log=File.open("ruby.log",'w')
+      @counter_pc_log=File.open("counter_pc.log",'w')
       @pc=options[:start_address] || 0x0
-      @nb_instr=0
+      @instruction_count=0
     end
 
     def load filename
@@ -39,22 +42,23 @@ module Rive
     end
 
     def print_state instruction
-      @log.puts "╔═══════╤════════════╦════════╤════════════╦════════╤════════════╦════════╤════════════╗\n"
-      @log.puts "║ x0  z │ 0x%08x ║  x8 fp │ 0x%08x ║ x16 a6 │ 0x%08x ║ x24 s8 │ 0x%08x ║\n" %[@reg[0], @reg[8],  @reg[16], @reg[24]]
-      @log.puts "║ x1 ra │ 0x%08x ║  x9 s1 │ 0x%08x ║ x17 a7 │ 0x%08x ║ x25 s9 │ 0x%08x ║\n" %[@reg[1], @reg[0],  @reg[17], @reg[25]]
-      @log.puts "║ x2 sp │ 0x%08x ║ x10 a0 │ 0x%08x ║ x18 s2 │ 0x%08x ║ x26 s10│ 0x%08x ║\n" %[@reg[2], @reg[10], @reg[18], @reg[26]]
-      @log.puts "║ x3 gp │ 0x%08x ║ x11 a1 │ 0x%08x ║ x19 s3 │ 0x%08x ║ x27 s11│ 0x%08x ║\n" %[@reg[3], @reg[11], @reg[19], @reg[27]]
-      @log.puts "║ x4 tp │ 0x%08x ║ x12 a2 │ 0x%08x ║ x20 s4 │ 0x%08x ║ x28 t3 │ 0x%08x ║\n" %[@reg[4], @reg[12], @reg[20], @reg[28]]
-      @log.puts "║ x5 t0 │ 0x%08x ║ x13 a3 │ 0x%08x ║ x21 s5 │ 0x%08x ║ x29 t4 │ 0x%08x ║\n" %[@reg[5], @reg[13], @reg[21], @reg[29]]
-      @log.puts "║ x6 t1 │ 0x%08x ║ x14 a4 │ 0x%08x ║ x22 s6 │ 0x%08x ║ x30 t5 │ 0x%08x ║\n" %[@reg[6], @reg[14], @reg[22], @reg[30]]
-      @log.puts "║ x7 t2 │ 0x%08x ║ x15 a5 │ 0x%08x ║ x23 s7 │ 0x%08x ║ x31 t6 │ 0x%08x ║\n" %[@reg[7], @reg[15], @reg[23], @reg[31]]
-      @log.puts "╠═══════╪════════════╬════════╪════════════╬════════╪════════════╩════════╧════════════╣\n"
-      @log.puts "║    pc │ 0x%08x ║  instr │ 0x%08x ║   mode │ machine                          ║\n" %[@pc, instruction]
-      @log.puts "╚═══════╧════════════╩════════╧════════════╩════════╧══════════════════════════════════╝\n"
+      @log.puts "╔═══════╤════════════╦════════╤════════════╦════════╤════════════╦════════╤════════════╗"
+    	@log.puts "║ x0  z │ 0x%08x ║  x8 fp │ 0x%08x ║ x16 a6 │ 0x%08x ║ x24 s8 │ 0x%08x ║" % [@reg[0],  @reg[8], @reg[16], @reg[24]]
+    	@log.puts "║ x1 ra │ 0x%08x ║  x9 s1 │ 0x%08x ║ x17 a7 │ 0x%08x ║ x25 s9 │ 0x%08x ║" % [@reg[1],  @reg[0], @reg[17], @reg[25]]
+    	@log.puts "║ x2 sp │ 0x%08x ║ x10 a0 │ 0x%08x ║ x18 s2 │ 0x%08x ║ x26 s10│ 0x%08x ║" % [@reg[2], @reg[10], @reg[18], @reg[26]]
+    	@log.puts "║ x3 gp │ 0x%08x ║ x11 a1 │ 0x%08x ║ x19 s3 │ 0x%08x ║ x27 s11│ 0x%08x ║" % [@reg[3], @reg[11], @reg[19], @reg[27]]
+    	@log.puts "║ x4 tp │ 0x%08x ║ x12 a2 │ 0x%08x ║ x20 s4 │ 0x%08x ║ x28 t3 │ 0x%08x ║" % [@reg[4], @reg[12], @reg[20], @reg[28]]
+    	@log.puts "║ x5 t0 │ 0x%08x ║ x13 a3 │ 0x%08x ║ x21 s5 │ 0x%08x ║ x29 t4 │ 0x%08x ║" % [@reg[5], @reg[13], @reg[21], @reg[29]]
+    	@log.puts "║ x6 t1 │ 0x%08x ║ x14 a4 │ 0x%08x ║ x22 s6 │ 0x%08x ║ x30 t5 │ 0x%08x ║" % [@reg[6], @reg[14], @reg[22], @reg[30]]
+    	@log.puts "║ x7 t2 │ 0x%08x ║ x15 a5 │ 0x%08x ║ x23 s7 │ 0x%08x ║ x31 t6 │ 0x%08x ║" % [@reg[7], @reg[15], @reg[23], @reg[31]]
+    	@log.puts "╠═══════╪════════════╬════════╪════════════╬════════╪════════════╩═╤══════╧════════════╣"
+    	@log.puts "║    pc │ 0x%08x ║  instr │ 0x%08x ║   mode │ machine      │ %17d ║" % [@pc, instruction,@instruction_count]
+    	@log.puts "╚═══════╧════════════╩════════╧════════════╩════════╧══════════════╧═══════════════════╝"
     end
 
     def fetch
-      instruction=@memory.read_32_bits @pc
+      instruction=@memory.read_word @pc
+      @old_pc=@pc
       @pc+=4
       instruction
     end
@@ -62,14 +66,19 @@ module Rive
     def run filename
       puts "=> running"
       @running=true
+      now_stepping=false
       while @running
-        #step
-        @nb_instr+=1
-        puts "instr #{@nb_instr} pc=0x#{@pc.to_s(16)} (#{@pc})".center(80,'=')
+        @instruction_count+=1
+        puts "instr #{@instruction_count} pc=0x#{@pc.to_s(16)} (#{@pc})".center(80,'=')
         instruction=fetch()
         decode_execute(instruction)
+        log_counter_addr()
         print_state(instruction)
       end
+    end
+
+    def log_counter_addr
+      @counter_pc_log.puts "#{@instruction_count.to_s.rjust(8)} @#{@old_pc.to_s(16).rjust(8,'0')} #{@opcode.to_s.upcase}"
     end
 
     def decode_execute instruction
@@ -85,7 +94,7 @@ module Rive
         field[field_name]=bitfield(instruction,field_range)
       end
       # step
-      # puts opcode
+      puts opcode.to_s(2)
       case opcode=field[:opcode]
       when OPCODE_LUI #lui
         imm =field[:imm_31_12] << 12
@@ -108,17 +117,16 @@ module Rive
         rd= field[:rd]
         @reg[rd]=@pc+4 #in bytes
         @pc+=imm
+        text = [:jal,rd,imm]
       when OPCODE_JALR #===== I format =====
         @pc-=4 #fetch has prepared @pc+=4 already
         imm  = field[:imm_11_0]
         rs1  = field[:rs1]
         rd   = field[:rd]
-        text = [:jalr,rd,rs1,imm]
         imm=(imm-2**12) if imm[11]==1
         @reg[rd]=@pc+4 #in bytes
-        puts "reg#{rs1}=#{@reg[rs1]}"
         @pc=@reg[rs1]+imm
-        puts "pc=#{@pc}"
+        text = [:jalr,rd,rs1,imm]
       when OPCODE_BRANCH #===== B format =====
         #beq,bne,blt,bge,bltu,bge
         @pc-=4 #fetch has prepared @pc+=4 already
@@ -183,32 +191,32 @@ module Rive
         rd  =field[:rd]
         case funct3=field[:funct3]
         when 0b000 #load byte
-          text = [:lb,rd,rs1,imm]
           @reg[rd]=sx(@memory[@reg[rs1]+imm] & 0xFF,8) #load byte, then sign extend to 32, from 8 bits
         when 0b001 #load half word
-          text = [:lh,rd,rs1,imm]
           addr=@reg[rs1]+imm
-          @reg[rd]=sx(@memory.read_32_bits(addr) & 0xFFFF,16) #load half, then sign extend to 32, from 16 bits
+          half=@memory.read_half(addr) #load half
+          puts "addr=reg[#{rs1}]+#{imm}=#{@reg[rs1]}+#{imm}=0x#{addr.to_s(16)}"
+          @reg[rd]=sx(half,16) #then sign extend to 32, from 16 bits
+          text=[:lh,rd,rs1,imm]
         when 0b010
-          text = [:lw,rd,rs1,imm]
-          puts @reg[rs1].to_s(16)
-          puts imm
           addr=@reg[rs1]+imm
           puts "addr=reg[#{rs1}]+#{imm}=#{@reg[rs1]}+#{imm}=0x#{addr.to_s(16)}"
           puts "lw @ 0x#{addr.to_s(16)}"
-          #@reg[rd]=sx(@memory[addr] & 0xFFFFFFFF,32)
-          @reg[rd]=sx(@memory.read_32_bits(addr),32)
+          @reg[rd]=@memory.read_word(addr)
+          text=[:lw,rd,rs1,imm]
         when 0b100
-          text = [:lbu,rd,rs1,imm]
           addr=@reg[rs1]+imm
-          @reg[rd]=ux(@memory.read_32_bits(addr) & 0xFF,8) #load byte, then unsigned extend to 32, from 8 bits
+          @reg[rd]=ux(@memory.read_word(addr) & 0xFF,8) #load byte, then unsigned extend to 32, from 8 bits
+          text=[:lbu,rd,rs1,imm]
         when 0b101
           text = [:lhu,rd,rs1,imm]
           addr=@reg[rs1]+imm
-          @reg[rd]=ux(@memory.read_32_bits(addr) & 0xFFFF,16) #load byte, then unsigned extend to 32, from 16 bits
+          @reg[rd]=ux(@memory.read_half(addr) & 0xFFFF,16) #load byte, then unsigned extend to 32, from 16 bits
+          text=[:lhu,rd,rs1,imm]
         else
           raise "unknown funct3=0b#{funct3.to_s(2)} for opcode=0b0100011"
         end
+        @memory.show_mem(addr)
         showregs(rd)
       when OPCODE_STORE #==== s_type
         rs1=field[:rs1]
@@ -219,15 +227,19 @@ module Rive
         when 0b000
           text = [:sb,rs1,rs2,imm]
           addr=@reg[rs1]+imm
-          @memory.write_32_bits addr,@reg[rs2] & 0xFF #u8
+          @memory.write_word addr,@reg[rs2] & 0xFF #u8
         when 0b001
           text = [:sh,rs1,rs2,imm]
           addr=@reg[rs1]+imm
-          @memory.write_32_bits addr,@reg[rs2] & 0xFFFF #u16
+          data=@reg[rs2] & 0xFFFF
+          puts "store reg[#{rs2}]=0x#{data.to_s(16)} to @ reg[#{rs1}]+#{imm}=0x#{@reg[rs1].to_s(16)}+0x#{imm.to_s(16)}=0x#{addr.to_s(16)}"
+          @memory.write_half addr,data #u16  #BUG found. was write_word
+          puts "reread : #{  @memory.read_half(addr)}"
         when 0b010
-          text = [:sw,rs1,rs2,imm]
           addr=@reg[rs1]+imm
-          @memory.write_32_bits addr, @reg[rs2] # u32
+          puts "store reg[#{rs2}]=0x#{@reg[rs2].to_s(16)} to @ reg[#{rs1}]+#{imm}=0x#{@reg[rs1].to_s(16)}+0x#{imm.to_s(16)}=0x#{addr.to_s(16)}"
+          @memory.write_word addr, @reg[rs2] # u32
+          text = [:sw,rs2,rs1,imm]
         else
           raise "unknown funct3=0b#{funct3.to_s(2)} for opcode=0b0100011"
         end
@@ -240,7 +252,9 @@ module Rive
         imm-=2**12 if imm[11]==1
         case funct3=field[:funct3]
         when 0b000
-          text = [:addi,rd,rs1,imm]
+          op=  :addi
+          op=  :nop if rd==0
+          text = [op,rd,rs1,imm]
           puts "reg[#{rs1}]=0x#{@reg[rs1].to_s(16)}"
           puts "imm=#{imm}(dec)"
           @reg[rd]=(sx(@reg[rs1]) + imm) & 0xFFFFFFFF
@@ -315,12 +329,13 @@ module Rive
             @reg[rd]=ux(@reg[rs1]) ^ ux(@reg[rs2])
           when 0b0000001
             @reg[rd]=sx(@reg[rs1]) / sx(@reg[rs2])
+            text = [:div,rd,rs1,rs2]
           else
             raise "unknown case"
           end
         when 0b101
           #srl,sra
-          case imm_11_5=(field[:imm_11_0] & 0b1111111) # 7 bits
+          case funct7=field[:funct7]
           when 0b0000000
             text = [:srl,rd,rs1,rs2]
             @reg[rd]=ux(@reg[rs1]) >> (@reg[rs2] & 0b111111)
@@ -331,7 +346,8 @@ module Rive
             text = [:divu,rd,rs1,rs2]
             @reg[rd]=ux(@reg[rs1]) / ux(@reg[rs2])
           else
-            raise "unknown case for i_type with func3=0b101"
+            p funct7
+            raise "unknown case for i_type with func3=0b101 func7=0x#{func7.to_s(16)}"
           end
         when 0b110
           case imm_11_5=field[:funct7]
@@ -361,36 +377,67 @@ module Rive
         showregs(rd)
       when 0b0001111
         #fence, fence.i
-      when 0b1100111
-        #ecall,ebreak
-      when 0b1110011
+      when OPCODE_E_CSR
         #csrrw,etc
-      when OPCODE_INT_MUL
-        #mul etc
+        imm_11_0=csr=field[:imm_11_0]
+        rs1=zimm=field[:rs1]
+        rd =field[:rd]
         case funct3=field[:funct3]
         when 0b000
-          text = [:mul]
+          #ecall,ebreak
+          case imm_11_0
+          when 0b000000000000
+            @reg[1]=@pc #has been incremented during fetch
+						@pc = 0x20 #- 4
+            text=[:ecall]
+          when 0b000000000001
+            text=[:ebreak]
+          else
+             raise "unknown imm_11_0=0b#{imm_11_0.to_s(2)} for opcode=#{OPCODE_E_CSR}"
+          end
         when 0b001
-          text = [:mulh]
+          text = [:csrrw,rd,rs1,csr]
         when 0b010
-          text = [:mulhsu]
+          text = [:csrrs,rd,rs1,csr]
         when 0b011
-          text = [:mulhu]
-        when 0b100
-          text = [:div]
+          text = [:csrrc,rd,rs1,csr]
         when 0b101
-          text = [:divu]
+          text = [:csrrwi,rd,zimm,csr]
         when 0b110
-          text = [:rem]
+          text = [:csrrsi,rd,zimm,csr]
         when 0b111
-          text = [:remu]
+          text = [:csrrci,rd,zimm,csr]
         else
           raise "unknown funct3=0b#{funct3.to_s(2)} for opcode=0b0110011"
         end
+      # when OPCODE_INT_MUL
+      #   #mul etc
+      #   case funct3=field[:funct3]
+      #   when 0b000
+      #     text = [:mul]
+      #   when 0b001
+      #     text = [:mulh]
+      #   when 0b010
+      #     text = [:mulhsu]
+      #   when 0b011
+      #     text = [:mulhu]
+      #   when FUNCT3_DIV
+      #     text = [:div]
+      #   when FUNCT3_DIVU
+      #     text = [:divu]
+      #   when 0b110
+      #     text = [:rem]
+      #   when 0b111
+      #     text = [:remu]
+      #   else
+      #     raise "unknown funct3=0b#{funct3.to_s(2)} for opcode=0b0110011"
+      #   end
       else
         raise "unknown opcode '0b#{opcode.to_s(2).rjust(7,'0')}' in #{field}"
       end
       @reg[0]=0 #force
+      puts text.join(" ")
+      @opcode=text.first
     end
   end
 end

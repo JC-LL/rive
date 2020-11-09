@@ -23,8 +23,16 @@ module Rive
       @content[addr]=data
     end
 
-    def write_32_bits addr,data
+    def write_word addr,data
       0.upto(3) do |i|
+        byte=data & 0xff
+        write_byte addr+i,byte
+        data=data >> 8
+      end
+    end
+
+    def write_half addr,data
+      0.upto(1) do |i|
         byte=data & 0xff
         write_byte addr+i,byte
         data=data >> 8
@@ -35,8 +43,13 @@ module Rive
       bytes=@content[addr..(addr+nb_bytes-1)]
     end
 
-    def read_32_bits addr
-      puts "read at 0x%08x" % addr
+    def read_byte addr
+      bytes=read_bytes(addr,1)
+      bytes.shift
+    end
+
+    def read_word addr
+      #puts "read at 0x%08x" % addr
       bytes=read_bytes(addr,4)
       data=0
       data+=bytes.shift
@@ -46,10 +59,16 @@ module Rive
       data
     end
 
-    def show_mem addr,nb_bytes=32
-      puts "mem[0x0%8x]" % addr
+    def read_half addr
+      bytes=read_bytes(addr,2)
+      data=0
+      data+=bytes.shift
+      data+=bytes.shift << 8  #indianness
+      data
+    end
+
+    def show_mem addr
+      puts "mem[0x%08x]=0x%02x" % [addr,read_byte(addr)]
     end
   end
 end
-
-p Rive::Memory.new(0x0100000).write_32_bits 0x0, 0xDEADBEEF
