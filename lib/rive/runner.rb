@@ -61,6 +61,10 @@ module Rive
       parser.on("--start ADDR", "start address") do |addr|
         options[:start_address] = addr
       end
+      
+      parser.on("--memsize SIZE", "memory size") do |size|
+        options[:memsize] = size.to_i
+      end
 
       parser.on("--vv", "verbose") do
         options[:verbose] = true

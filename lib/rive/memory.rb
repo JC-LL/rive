@@ -51,6 +51,11 @@ module Rive
     def read_word addr
       #puts "read at 0x%08x" % addr
       bytes=read_bytes(addr,4)
+      #puts "read at 0x%08x -> #{bytes}" % addr
+      if bytes.any?{|e| e.nil?}
+        raise "defectuous data around 0x%08x. Bytes are : " % addr
+        pp bytes
+      end
       data=0
       data+=bytes.shift
       data+=bytes.shift << 8  #indianness

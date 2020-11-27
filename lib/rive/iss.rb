@@ -1,3 +1,4 @@
+# coding: utf-8
 require_relative 'isa'
 require_relative 'memory'
 require_relative 'disassembler'
@@ -16,17 +17,14 @@ module Rive
       @options=options
       configure
     end
-
     def configure
       puts "=> configuring processor"
-      @mem_size=options[:mem_size] || 2**20
+      @mem_size=options[:memsize] || 2**20
       @memory=Memory.new(@mem_size)
-      #@reg=(0..31).map{|i| [i,0]}.to_h
-      @reg=Array.new(32){0}
-      pp @reg
+      @reg   =Array.new(32){0}
       @sp=@reg[2]=@mem_size
-      @log=File.open("ruby.log",'w')
-      @counter_pc_log=File.open("counter_pc.log",'w')
+      @log=File.open("ruby_reg_state.log",'w')
+      @counter_pc_log=File.open("ruby_counter_pc.log",'w')
       @pc=options[:start_address] || 0x0
       @instruction_count=0
     end
@@ -69,9 +67,9 @@ module Rive
       now_stepping=false
       while @running
         @instruction_count+=1
-        puts "instr #{@instruction_count} pc=0x#{@pc.to_s(16)} (#{@pc})".center(80,'=')
         instruction=fetch()
-        decode_execute(instruction)
+        txt=decode_execute(instruction)
+        puts "##{@instruction_count} pc=0x#{@old_pc.to_s(16)} instr=0x#{instruction.to_s(16).rjust(8,'0')} #{txt}"
         log_counter_addr()
         print_state(instruction)
       end
@@ -94,15 +92,15 @@ module Rive
         field[field_name]=bitfield(instruction,field_range)
       end
       # step
-      puts opcode.to_s(2)
       case opcode=field[:opcode]
-      when OPCODE_LUI #lui
+      when OPCODE_LUI
         imm =field[:imm_31_12] << 12
         rd= field[:rd]
         text = [:lui,imm]
         @reg[rd]=imm
       when OPCODE_AUIPC #===== U format =====
         imm =field[:imm_31_12] << 12
+        imm=(imm-2**32) if imm[31]==1 #signed 32 bits 31...0
         rd= field[:rd] #BUG fix. Was missing !
         text = [:auipc,@pc+imm]
         @reg[rd]=(@pc-4)+imm #fetch has already incremented pc+4
@@ -147,7 +145,7 @@ module Rive
             @pc+=4
           end
         when 0b001
-          text = [:bne,rs1,rs2,imm]
+          text = [:bne,rs1,rs2,imm,sx(@reg[rs1]),sx(@reg[rs2])]
           if sx(@reg[rs1]) != sx(@reg[rs2])
             @pc+=imm
           else
@@ -161,7 +159,7 @@ module Rive
             @pc+=4
           end
         when 0b101
-          text = [:bge,rs1,rs2,imm]
+          text = [:bge,rs1,rs2,imm, sx(@reg[rs1]),sx(@reg[rs2])]
           if sx(@reg[rs1]) >= sx(@reg[rs2])
             @pc+=imm
           else
@@ -195,29 +193,27 @@ module Rive
         when 0b001 #load half word
           addr=@reg[rs1]+imm
           half=@memory.read_half(addr) #load half
-          puts "addr=reg[#{rs1}]+#{imm}=#{@reg[rs1]}+#{imm}=0x#{addr.to_s(16)}"
           @reg[rd]=sx(half,16) #then sign extend to 32, from 16 bits
           text=[:lh,rd,rs1,imm]
         when 0b010
           addr=@reg[rs1]+imm
-          puts "addr=reg[#{rs1}]+#{imm}=#{@reg[rs1]}+#{imm}=0x#{addr.to_s(16)}"
-          puts "lw @ 0x#{addr.to_s(16)}"
           @reg[rd]=@memory.read_word(addr)
           text=[:lw,rd,rs1,imm]
         when 0b100
           addr=@reg[rs1]+imm
-          @reg[rd]=ux(@memory.read_word(addr) & 0xFF,8) #load byte, then unsigned extend to 32, from 8 bits
+          @reg[rd]=@memory.read_byte(addr) & 0xFFFFFFF
           text=[:lbu,rd,rs1,imm]
         when 0b101
-          text = [:lhu,rd,rs1,imm]
           addr=@reg[rs1]+imm
           @reg[rd]=ux(@memory.read_half(addr) & 0xFFFF,16) #load byte, then unsigned extend to 32, from 16 bits
           text=[:lhu,rd,rs1,imm]
         else
           raise "unknown funct3=0b#{funct3.to_s(2)} for opcode=0b0100011"
         end
-        @memory.show_mem(addr)
-        showregs(rd)
+        if @options[:verbose]
+          @memory.show_mem(addr)
+          show_regs(rd)
+        end
       when OPCODE_STORE #==== s_type
         rs1=field[:rs1]
         rs2=field[:rs2]
@@ -227,23 +223,22 @@ module Rive
         when 0b000
           text = [:sb,rs1,rs2,imm]
           addr=@reg[rs1]+imm
-          @memory.write_word addr,@reg[rs2] & 0xFF #u8
+          @memory.write_byte addr,@reg[rs2] & 0xFF #u8
         when 0b001
           text = [:sh,rs1,rs2,imm]
           addr=@reg[rs1]+imm
           data=@reg[rs2] & 0xFFFF
-          puts "store reg[#{rs2}]=0x#{data.to_s(16)} to @ reg[#{rs1}]+#{imm}=0x#{@reg[rs1].to_s(16)}+0x#{imm.to_s(16)}=0x#{addr.to_s(16)}"
           @memory.write_half addr,data #u16  #BUG found. was write_word
-          puts "reread : #{  @memory.read_half(addr)}"
         when 0b010
           addr=@reg[rs1]+imm
-          puts "store reg[#{rs2}]=0x#{@reg[rs2].to_s(16)} to @ reg[#{rs1}]+#{imm}=0x#{@reg[rs1].to_s(16)}+0x#{imm.to_s(16)}=0x#{addr.to_s(16)}"
           @memory.write_word addr, @reg[rs2] # u32
           text = [:sw,rs2,rs1,imm]
         else
           raise "unknown funct3=0b#{funct3.to_s(2)} for opcode=0b0100011"
         end
-        @memory.show_mem(addr)
+        if @options[:verbose]
+          @memory.show_mem(addr)
+        end
       when OPCODE_INT_IMM #=== i_type
         #addi,slti,sltiu,xori,ori,andi,slli,srli
         rs1=field[:rs1]
@@ -255,8 +250,6 @@ module Rive
           op=  :addi
           op=  :nop if rd==0
           text = [op,rd,rs1,imm]
-          puts "reg[#{rs1}]=0x#{@reg[rs1].to_s(16)}"
-          puts "imm=#{imm}(dec)"
           @reg[rd]=(sx(@reg[rs1]) + imm) & 0xFFFFFFFF
         when 0b010
           text = [:slti,rd,rs1,imm]
@@ -293,7 +286,7 @@ module Rive
         else
           raise "unknown funct3 '0b#{funct3.to_s(2)}'"
         end
-        showregs(rd)
+        show_regs(rd) if @options[:verbose]
       when OPCODE_INT_REG #r_type
         rs1=field[:rs1]
         rs2=field[:rs2]
@@ -346,7 +339,6 @@ module Rive
             text = [:divu,rd,rs1,rs2]
             @reg[rd]=ux(@reg[rs1]) / ux(@reg[rs2])
           else
-            p funct7
             raise "unknown case for i_type with func3=0b101 func7=0x#{func7.to_s(16)}"
           end
         when 0b110
@@ -374,7 +366,7 @@ module Rive
         else
           raise "unknown funct3=0b#{funct3.to_s(2)} for opcode=0b0100011"
         end
-        showregs(rd)
+        show_regs(rd) if @options[:verbose]
       when 0b0001111
         #fence, fence.i
       when OPCODE_E_CSR
@@ -410,34 +402,12 @@ module Rive
         else
           raise "unknown funct3=0b#{funct3.to_s(2)} for opcode=0b0110011"
         end
-      # when OPCODE_INT_MUL
-      #   #mul etc
-      #   case funct3=field[:funct3]
-      #   when 0b000
-      #     text = [:mul]
-      #   when 0b001
-      #     text = [:mulh]
-      #   when 0b010
-      #     text = [:mulhsu]
-      #   when 0b011
-      #     text = [:mulhu]
-      #   when FUNCT3_DIV
-      #     text = [:div]
-      #   when FUNCT3_DIVU
-      #     text = [:divu]
-      #   when 0b110
-      #     text = [:rem]
-      #   when 0b111
-      #     text = [:remu]
-      #   else
-      #     raise "unknown funct3=0b#{funct3.to_s(2)} for opcode=0b0110011"
-      #   end
       else
         raise "unknown opcode '0b#{opcode.to_s(2).rjust(7,'0')}' in #{field}"
       end
       @reg[0]=0 #force
-      puts text.join(" ")
       @opcode=text.first
+      return  text.join(" ")
     end
   end
 end

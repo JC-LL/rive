@@ -14,8 +14,7 @@ module Rive
 
     def sx bin,size_init=32
       if bin[size_init-1]==1
-        abs_val=-bin
-        return 2**32-abs_val
+        return bin-2**32
       else
         return bin
       end
@@ -25,7 +24,7 @@ module Rive
       bin
     end
 
-    def showregs reg=nil
+    def show_regs reg=nil
       @reg.each_with_index do |value,id|
         if reg
           if reg==id

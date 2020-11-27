@@ -30,7 +30,7 @@ for i in 0..log_r.size-1
   r_line=log_r[i]
   c_line=log_c[i]
   if r_line!=c_line
-    puts "line #{i} : #{r_line}  || #{c_line}"
+    puts "line #{i+1} : "
     puts r_line
     puts c_line
   end
